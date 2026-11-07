@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Casos prácticos de Diseño de Sistemas de Información</title>
+<style>
+:root{--bg:#eef1ed;--card:#fbfcfa;--tx:#14231f;--mu:#52625c;--pr:#0f6b66;--ok:#2b7a3a;--okb:#e3f2e6;--ko:#b3372f;--kob:#f9e7e5;--bd:#cdd6cf}
+@media(prefers-color-scheme:dark){:root{--bg:#101815;--card:#18231f;--tx:#e6eee9;--mu:#9bb0a7;--pr:#5cc4bb;--ok:#68c47a;--okb:#16301b;--ko:#f08a82;--kob:#37201e;--bd:#2f3f39}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:760px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+h1{font:600 1.05rem Georgia,serif;margin:0}
+h2{font:600 1.4rem Georgia,serif;margin:0 0 8px}
+.st span{margin-left:14px;font-weight:600}
+.bar{height:6px;background:var(--bd);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pr);transition:width .35s}
+.card{background:var(--card);border:1px solid var(--bd);border-left:4px solid var(--pr);border-radius:6px;padding:18px;margin-top:14px}
+.tag{color:var(--mu);font-size:.85rem}
+.sc{font:1.08rem/1.6 Georgia,serif;margin:8px 0 4px}
+.o{display:flex;gap:12px;width:100%;text-align:left;background:var(--card);color:var(--tx);border:2px solid var(--bd);border-radius:6px;padding:12px;margin-top:10px;font:inherit;cursor:pointer}
+.o b{flex:none;width:26px;height:26px;border-radius:50%;background:var(--bd);display:grid;place-items:center;font-size:.85rem}
+.o:hover:not(:disabled){border-color:var(--pr)}
+.o.s{border-color:var(--pr)}.o.s b{background:var(--pr);color:var(--bg)}
+.o.c{border-color:var(--ok);background:var(--okb)}.o.c b{background:var(--ok);color:#fff}
+.o.w{border-color:var(--ko);background:var(--kob)}.o.w b{background:var(--ko);color:#fff}
+.o:disabled{cursor:default}
+.btn{background:var(--pr);color:var(--bg);border:2px solid var(--pr);border-radius:6px;padding:11px 20px;font:inherit;font-weight:600;cursor:pointer;margin:16px 8px 0 0}
+.btn.g{background:transparent;color:var(--pr)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--pr);outline-offset:2px}
+.fb{margin-top:16px;padding:14px;border-radius:6px;background:var(--bg);border-left:5px solid var(--bd)}
+.fb.c{border-color:var(--ok)}.fb.w{border-color:var(--ko)}
+.fb p{margin:10px 0 0;font-size:.95rem}
+.big{font:700 3rem Georgia,serif;margin:4px 0}
+@media(prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="w">
+<header>
+  <h1>Diseño de Sistemas de Información</h1>
+  <div class="st"><span style="color:var(--ok)">Correctas: <b id="cOk">0</b></span><span style="color:var(--ko)">Incorrectas: <b id="cBad">0</b></span></div>
+</header>
+<div id="app"></div>
+</div>
+<script>
+// Formato: cada opción es [texto, explicación]. La PRIMERA es la correcta; el orden se mezcla en cada intento.
+const Q=[
+{b:'ORM y herencia',s:'Una aplicación Java modela Empleado con las subclases Docente y Administrativo. Casi todas las consultas son “listar todos los empleados” y se prioriza la velocidad de lectura, aunque queden columnas vacías. ¿Qué estrategia de mapeo de herencia conviene?',o:[
+['Single table: una única tabla con las columnas de todas las clases y un campo discriminador.','Cada consulta va a una sola tabla, sin JOIN ni UNION. El costo son las columnas nulas, que acá se aceptan a cambio de rendimiento.'],
+['Joined: una tabla para la superclase y una por cada subclase.','Para reconstruir un objeto el ORM debe hacer JOIN. Está más ordenada, pero es más lenta para el caso que se prioriza.'],
+['Table per class: una tabla por cada clase concreta.','Listar todos los empleados exige UNION entre las tablas hijas y los atributos heredados se duplican.'],
+['Mapped superclass: los atributos de la superclase se persisten en las tablas hijas.','La superclase no se considera entidad, así que no se puede consultar a todos los empleados de forma polimórfica.']]},
+{b:'Normalización',s:'La tabla Pedido(idPedido, idCliente, nombreCliente, domicilioCliente, fecha) tiene PK simple idPedido. Al cambiar el domicilio de un cliente quedan pedidos viejos con datos distintos. ¿Qué problema de diseño hay y cómo se resuelve?',o:[
+['Viola 3FN: nombre y domicilio dependen de idCliente, que no es clave. Se parte en Cliente y Pedido, vinculadas por FK.','Hay dependencia funcional entre atributos no clave. Al separar, idCliente pasa a ser PK de Cliente y cada dato vive una sola vez.'],
+['Viola 2FN: hay que eliminar dependencias parciales de la clave.','Las dependencias parciales exigen una clave compuesta; acá la PK es simple, así que el problema es otro.'],
+['Viola 1FN: hay campos repetitivos que deberían pasar a una lista.','No hay arrays ni columnas repetidas, y las listas de valores van contra 1FN, no a favor.'],
+['Falta la forma canónica: hay que quitar atributos calculados.','Esa forma elimina atributos derivados por cálculo. Nombre y domicilio no se calculan: son datos primitivos mal ubicados.']]},
+{b:'Desnormalización',s:'En un sistema de pedidos con millones de filas, el JOIN con Cliente vuelve lento el listado. Además, el negocio quiere conservar el domicilio al que se entregó cada pedido aunque el cliente se mude. ¿Qué decisión es adecuada?',o:[
+['Mantener el modelo normalizado y agregar en Pedido una copia histórica del domicilio (campo redundante).','Se desnormaliza a propósito, después de normalizar, y se documenta como decisión del negocio. Además evita el JOIN para ese dato.'],
+['Unir Cliente y Pedido en una sola tabla desde el diseño inicial.','Para desnormalizar primero hay que normalizar; saltear ese paso genera redundancia sin una decisión consciente.'],
+['Definir ON UPDATE CASCADE en la FK para propagar el domicilio nuevo a todos los pedidos.','Se perdería justamente el domicilio real de entrega: la cascada reescribiría el historial.'],
+['Llevar el modelo a 4FN y 5FN para reducir aún más la redundancia.','Esas formas atacan dependencias multivaluadas y reducen redundancia; acá se necesita lo contrario: una copia histórica.']]},
+{b:'NoSQL: documentos',s:'Una app de recetas guarda cada Receta con sus pasos (pocos, se leen siempre junto a la receta y casi no cambian) y sus Categorías (se consultan por separado y se asocian N:N con muchas recetas). ¿Cómo conviene modelarlo en MongoDB?',o:[
+['Pasos embebidos en el documento Receta; categorías en su propia colección, referenciadas desde la receta.','Lo que se accede junto y casi no cambia va embebido; lo que se consulta solo y es N:N va referenciado (con populate).'],
+['Todo embebido, incluidas las categorías dentro de cada receta.','Con relaciones N:N y cambios de categoría habría que modificar muchos documentos duplicados.'],
+['Todo referenciado, con claves foráneas y JOIN entre colecciones.','Mongo no tiene FK ni JOINs; la referencia la administra la aplicación, y para los pasos obligaría a lecturas de más.'],
+['Pasos referenciados en otra colección y categorías embebidas.','Invierte el criterio: los pasos se leen siempre juntos y las categorías son independientes.']]},
+{b:'NoSQL: elección del motor',s:'Un equipo necesita (a) guardar sesiones y carritos con acceso por clave y muy baja latencia, y (b) registrar lecturas de sensores: miles de millones de registros, escrituras masivas, lectura por clave y un clúster peer-to-peer que siga disponible aunque caigan nodos. ¿Qué combinación elige?',o:[
+['Key-value en memoria (Redis) para (a) y base de familia de columnas (Cassandra) para (b).','Key-value encaja con sesiones, caché y carritos. Cassandra está pensada para escrituras masivas, lecturas por clave y disponibilidad sin servidor central.'],
+['Orientada a grafos (Neo4J) para (a) y orientada a columnas analítica para (b).','Los grafos sirven para relaciones (recomendaciones, fraude), no para sesiones por clave; la columnar apunta a consultas analíticas, no a escrituras masivas peer-to-peer.'],
+['Orientada a documentos (MongoDB) para (a) y de series temporales (InfluxDB) para (b).','Key-value es el caso típico de sesiones, y la serie temporal prioriza la evolución cronológica, no el requisito peer-to-peer con lectura por clave.'],
+['Relacional SQL con transacciones ACID para ambos casos.','Su arquitectura cliente-servidor genera cuello de botella con ese volumen y no ofrece la escalabilidad horizontal pedida.']]},
+{b:'Clientes web',s:'Un e-commerce necesita buen SEO y cuenta con un equipo chico. Dentro de un año quiere sumar una app móvil reutilizando la misma lógica de negocio sin reescribirla. ¿Qué enfoque de cliente conviene hoy?',o:[
+['Cliente liviano desacoplado: un servidor frontend que renderiza HTML y consume una API de negocio.','Entrega HTML indexable y deja la lógica detrás de una API que luego consumirá el móvil. Usa sesiones mixtas: cookie hacia el frontend y token hacia la API.'],
+['Cliente liviano tradicional con la lógica de negocio dentro de los controladores MVC.','Presentación y negocio quedan mezcladas en el servidor, así que la app móvil obligaría a extraer o duplicar esa lógica.'],
+['SPA pura que descarga todo el JavaScript y arma las vistas en el navegador.','La primera carga es lenta y el buscador indexa peor el contenido armado con JS, justo la prioridad del negocio.'],
+['Mobile híbrido desde ahora, abandonando la web.','Elimina el canal web con SEO, que es la necesidad actual.']]},
+{b:'Patrones de presentación',s:'Un equipo Android clásico quiere pantallas con vista pasiva, lógica de presentación testeable de forma aislada a través de una interfaz, relación uno a uno entre vista y lógica, y sin data binding automático. ¿Qué patrón aplica?',o:[
+['MVP: el Presenter conoce la vista por una interfaz y actualiza la pantalla de forma explícita.','La vista nunca toca el modelo y delega cada acción; la relación típica es uno a uno, lo que facilita testear cada pantalla.'],
+['MVVM: la vista se suscribe al ViewModel mediante data binding bidireccional.','Pide justo lo que se descartó: el binding automático. Es el esquema de Angular o Vue.'],
+['MVC: el controlador recibe la acción y la vista puede consultar al modelo.','En MVC la vista puede leer el modelo y un controlador suele atender varias vistas; no hay una vista pasiva uno a uno.'],
+['MVC distribuido con la vista renderizada en el servidor.','Es una forma de cliente liviano; no define un Presenter por pantalla ni una vista pasiva.']]},
+{b:'Renderizado',s:'Un blog corporativo publica contenido que cambia al desplegar, necesita SEO crítico y se sirve a varios países, pero además tiene un panel personalizado con datos que dependen de cada petición. ¿Qué estrategia de renderizado conviene?',o:[
+['Renderizado híbrido: SSG para las páginas del blog y SSR para el panel, hidratando luego en el navegador.','El HTML generado en el build se sirve estático con CDN y caché; lo que depende de la petición se genera en el servidor.'],
+['SPA pura para todo el sitio.','Empeora el SEO y la carga inicial del contenido que justamente debe indexarse.'],
+['SSR en cada request para todas las páginas.','Funciona, pero desperdicia el beneficio de CDN y caché en contenido que solo cambia al desplegar.'],
+['App móvil nativa con una base de código por plataforma.','No resuelve SEO ni la distribución web; es otra clase de cliente pesado.']]},
+{b:'Escalabilidad y balanceo',s:'Una app guarda la sesión en la memoria de cada servidor. Con tres instancias detrás de un balanceador Round Robin, los usuarios aparecen deslogueados al azar. Se quiere conservar la escalabilidad horizontal y la disponibilidad si un nodo cae. ¿Qué solución corresponde?',o:[
+['Volver los servicios stateless, externalizando la sesión (Redis, base de datos o JWT).','Cualquier instancia puede atender cualquier request y, si un nodo cae, la sesión no se pierde.'],
+['Activar sticky sessions en el balanceador.','Resuelve el síntoma, pero atenta contra la escalabilidad horizontal y la disponibilidad: si ese servidor cae, esos usuarios pierden igual la sesión.'],
+['Escalar verticalmente a un único servidor más grande.','Sigue siendo un punto único de falla y tiene límite físico; no mejora la disponibilidad.'],
+['Pasar el balanceador de capa 7 a capa 4.','Cambia cómo se decide el ruteo, no dónde vive el estado de la sesión.']]},
+{b:'Estrategias de despliegue',s:'Para desplegar una API crítica se exige cero downtime, cambio total del tráfico en un instante y rollback inmediato. Se acepta duplicar la infraestructura durante el despliegue. ¿Qué estrategia elige?',o:[
+['Blue/Green: dos ambientes idénticos y el tráfico se redirige en el balanceador.','El cambio es instantáneo y volver atrás es reapuntar a blue; el costo es la infraestructura duplicada.'],
+['Rolling update: reemplazo progresivo de instancias.','No hay downtime, pero conviven dos versiones y el rollback es lento (otro rolling hacia atrás).'],
+['Canary release: exponer la versión nueva a un porcentaje creciente de usuarios.','Limita el radio de impacto, pero es gradual y no un cambio instantáneo; además requiere observabilidad y ruteo.'],
+['Recreate (Big Bang): bajar todo y levantar la versión nueva.','Garantiza downtime y el rollback es otro redeploy.']]},
+{b:'Recuperación ante desastres',s:'Una financiera tolera perder como máximo unos segundos de datos y necesita restablecer el servicio en minutos tras la caída de un datacenter, con un presupuesto razonable aunque no mínimo. ¿Qué estrategia de recuperación ante desastres encaja?',o:[
+['Warm Standby: una copia reducida pero funcional, lista para escalar y recibir tráfico.','Su RPO va de segundos a minutos y su RTO es de minutos, con costo intermedio-alto.'],
+['Backup & Restore: solo copias de seguridad en otro sitio.','Su RPO es de horas y su RTO de horas a días, porque ante un desastre se reconstruye todo.'],
+['Pilot Light: datos replicados y una infraestructura mínima encendida.','Tiene RPO de minutos y RTO de decenas de minutos, porque el resto se levanta al necesitarlo.'],
+['Activo-Activo multi-sitio: dos o más sitios atendiendo tráfico real a la vez.','Logra RPO y RTO casi nulos, pero con el mayor costo; es más de lo que el caso exige.']]},
+{b:'Resiliencia en microservicios',s:'Pedidos llama de forma sincrónica a Pagos. Pagos se cayó y cada llamada tarda 30 segundos en fallar, por lo que Pedidos agota sus hilos y se vuelve lento. Además hay timeouts aislados y ocasionales en consultas de lectura. ¿Qué combinación aplica?',o:[
+['Circuit breaker con fallback para la caída persistente y retry con backoff limitado para los timeouts aislados idempotentes.','El breaker deja de llamar y responde rápido, frenando la falla en cascada; el retry resuelve fallas pasajeras sin que el usuario lo note.'],
+['Solo retry agresivo y sin límite de intentos.','Con Pagos caído sumaría carga y más hilos esperando; el retry no sirve para fallas persistentes.'],
+['Aumentar el timeout a 120 segundos.','Los hilos esperarían todavía más y empeoraría el agotamiento de recursos.'],
+['Escalar verticalmente el servicio de Pedidos.','Más recursos no evitan esperar a un servicio caído; la falla se propaga igual.']]},
+{b:'Consistencia entre servicios',s:'Al crear un pedido se reserva stock y después se cobra; si el cobro falla hay que liberar el stock y cancelar el pedido. Además, a veces el pedido se guarda pero el evento “pedido creado” nunca se publica. Cada servicio tiene su propia base. ¿Qué patrones aplican?',o:[
+['Saga con transacciones compensatorias y Transactional Outbox, con Inbox idempotente en los consumidores.','La saga deshace los pasos en orden inverso; el outbox guarda el evento en la misma transacción que el cambio y lo publica aparte; el inbox descarta duplicados.'],
+['Una única transacción ACID que abarque Pedidos, Stock y Pagos.','Con una base por servicio no existe una transacción global: ACID rige dentro de cada servicio.'],
+['Circuit breaker y retry entre los tres servicios.','Protegen las llamadas ante fallas, pero no deshacen pasos de negocio ni resuelven la doble escritura.'],
+['Una base compartida con claves foráneas entre servicios.','Rompe la autoridad de cada servicio sobre sus datos y acopla los esquemas.']]},
+{b:'Arquitectura limpia y hexagonal',s:'Un equipo quiere cambiar PostgreSQL por MongoDB, sumar un canal gRPC y probar las reglas de negocio con un repositorio en memoria, todo sin tocar el dominio. ¿Qué enfoque arquitectónico lo permite?',o:[
+['Arquitectura hexagonal: el dominio define puertos y los adaptadores de entrada y de salida son intercambiables.','El dominio solo conoce la forma del puerto, no el adaptador, así que se enchufan otros sin cambiar las reglas.'],
+['MVC con los controladores accediendo directamente a la base.','Mezcla reglas, comunicación y acceso a datos en el controller, justo lo que estas arquitecturas buscan evitar.'],
+['ORM con Active Record, donde las entidades se guardan solas.','Agrega responsabilidades de persistencia a las entidades de dominio y las acopla a la tecnología.'],
+['SOA con un ESB que centralice la transformación de mensajes.','Es integración entre sistemas a nivel empresa, no una forma de aislar el dominio de frameworks y bases de datos.']]},
+{b:'Observabilidad: diagnóstico',s:'En un sistema con muchos microservicios, “crear pedido” a veces tarda casi 4 segundos o falla. El equipo no sabe en qué servicio ocurre ni por qué. ¿Qué combinación permite detectarlo, localizarlo y explicarlo?',o:[
+['Métricas con alertas para detectar, trazas distribuidas (trace_id y spans) para localizar y logs estructurados filtrados por ese ID para explicar.','Las métricas dicen qué y cuánto, las trazas dónde y los logs por qué; el diagrama de cascada muestra el span lento y el camino crítico.'],
+['Solo logs de texto revisados servidor por servidor.','Sin un identificador compartido no se reconstruye el recorrido de la solicitud entre servicios.'],
+['Solo el promedio de latencia y la CPU de cada instancia.','El promedio oculta a los usuarios con peor experiencia y no dice en qué servicio se origina el problema.'],
+['Perfiles (flame graph) de todos los servicios desde el comienzo.','Los perfiles señalan la línea de código una vez ubicado el servicio culpable; no sirven para localizarlo.']]},
+{b:'Observabilidad: métricas y alertas',s:'El tablero muestra una latencia promedio de 250 ms y parece sano, pero los usuarios se quejan. Se quiere alertar centrado en el usuario y etiquetar las métricas sin que explote la cantidad de series. ¿Qué enfoque corresponde?',o:[
+['Medir percentiles (p95, p99) y alertar por síntoma con SLO, por ejemplo p95 de “crear pedido” mayor a 2 s durante 5 min, sin user_id en las etiquetas.','Los percentiles muestran la cola de peor experiencia, la alerta por síntoma refleja lo que sufre el usuario y evitar etiquetas de alta cardinalidad contiene la cantidad de series.'],
+['Alertar por CPU mayor a 80 % y etiquetar cada métrica con user_id.','La CPU es una causa frágil, no un síntoma, y user_id genera alta cardinalidad.'],
+['Mantener el promedio y sumar más logs de depuración.','El promedio miente y los logs no son una fuente eficiente de métricas.'],
+['Alertar con umbral estático sobre la profundidad de la cola de mensajes.','Es una causa, no un síntoma percibido por el usuario; puede disparar alertas sin impacto real.']]},
+{b:'Integridad referencial',s:'En un sistema académico, un curso puede estar abierto sin docente asignado. Cuando se da de baja a un docente, sus cursos deben seguir existiendo, solo que sin docente. ¿Qué acción de integridad referencial debe definirse al eliminar el docente?',o:[
+['SET NULL (anulación): la FK del docente en los cursos pasa a NULL.','Funciona porque la FK acepta nulos. Se conserva el curso y desaparece solo la referencia al docente borrado.'],
+['CASCADE: se eliminan también los cursos del docente.','Borraría cursos y, con ellos, inscripciones: algo que el negocio no quiere.'],
+['RESTRICT: no permitir eliminar docentes con cursos asignados.','Mantiene la integridad, pero impide la baja que el negocio sí necesita.'],
+['ON UPDATE CASCADE sobre la clave del docente.','Rige para la actualización de la clave primaria, no para la eliminación del registro.']]},
+{b:'Caché del ORM',s:'Un catálogo de países jamás cambia y lo consultan todas las sesiones de usuario, golpeando la base una y otra vez. ¿Qué configuración de caché del ORM corresponde?',o:[
+['Caché de segundo nivel (alcance SessionFactory) con estrategia READ_ONLY.','Se comparte entre todas las sesiones y, al ser datos inmutables, no se necesita control de concurrencia.'],
+['Solo la caché de primer nivel.','Tiene alcance de sesión: termina al cerrarla y no se comparte entre usuarios.'],
+['Caché de segundo nivel con READ_WRITE.','Garantiza consistencia con bloqueos suaves, un costo innecesario para entidades que no cambian.'],
+['Caché de segundo nivel con NONSTRICT_READ_WRITE.','Sirve cuando se tolera una mínima inconsistencia en datos que sí se actualizan; este catálogo no cambia.']]},
+{b:'Carga en el ORM',s:'En un ORM, cada Pedido tiene una colección de 5.000 Items que casi nunca se muestra, pero el listado de pedidos consume mucha memoria y tarda. ¿Qué ajuste corresponde?',o:[
+['Marcar la relación como LAZY: los Items se cargan solo cuando se accede a ellos.','En la hidratación el ORM no popula ese atributo hasta que se lo llama explícitamente.'],
+['Marcar la relación como EAGER.','Carga los objetos en memoria siempre, se usen o no, y empeoraría el problema.'],
+['Cascade ALL desde Pedido hacia Item.','Propaga operaciones de persistencia, pero no controla cuándo se cargan los datos.'],
+['Confiar en la caché de primer nivel.','Evita cargar dos veces la misma instancia en una sesión, pero no evita la hidratación inicial de la colección.']]},
+{b:'NoSQL: grafos y series temporales',s:'Una plataforma necesita (a) recomendar “amigos de amigos” evitando las consultas recursivas de SQL y (b) analizar cotizaciones que cambian todo el tiempo, donde importa su evolución cronológica. ¿Qué motores corresponden?',o:[
+['Orientada a grafos (Neo4J) para (a) y de series temporales (InfluxDB, TimescaleDB) para (b).','Los grafos modelan nodos y relaciones con propiedades; las series temporales se optimizan para datos con historia en orden cronológico.'],
+['Key-value (Redis) para (a) y orientada a columnas para (b).','Key-value recupera valores por clave y no recorre relaciones; la columnar sirve a analítica sobre grandes volúmenes, no a la evolución temporal.'],
+['Orientada a documentos (MongoDB) para (a) y relacional para (b).','Mongo no tiene JOINs para recorrer relaciones y una base relacional no está optimizada para rangos de tiempo masivos.'],
+['Familia de columnas (Cassandra) para (a) y orientada a objetos para (b).','Cassandra apunta a escrituras masivas por clave y las bases a objetos se atan a un lenguaje; ninguna encaja con estos usos.']]},
+{b:'Protección de recursos',s:'Gerentes y auditores tienen roles distintos, pero ambos deben poder exportar reportes; solo los gerentes pueden aprobarlos. Quien no inició sesión debe recibir un 401. ¿Qué nivel de protección corresponde?',o:[
+['Autenticación más autorización con roles y permisos.','Los permisos permiten que roles distintos compartan alguno (exportar) y reserven otros (aprobar); el 401 cubre a quien no está logueado.'],
+['Solo autenticación (401 si no está logueado).','Verifica que haya sesión, pero no distingue qué puede hacer cada usuario.'],
+['Autorización solo con roles.','Exige un rol que habilite todo el acceso, sin granularidad para compartir un permiso entre roles.'],
+['Pedir usuario y contraseña en cada petición.','Es inseguro y pierde privacidad; para eso existen las sesiones con token.']]},
+{b:'SOA: orquestación y coreografía',s:'Un banco automatiza el alta de cliente: validar identidad, abrir cuenta y enviar notificación, en ese orden. Es un flujo crítico donde se exige visibilidad completa y manejo de errores centralizado. ¿Qué enfoque conviene?',o:[
+['Orquestación: un coordinador central invoca a cada servicio en un orden definido.','Da control, visibilidad y manejo de errores centralizados. El costo es el acoplamiento de los servicios al orquestador.'],
+['Coreografía: cada servicio reacciona a eventos de los demás.','Desacopla más, pero el flujo completo es menos visible y más difícil de depurar.'],
+['Un ESB con las reglas de negocio programadas dentro del bus.','Esas reglas (smart pipes) son difíciles de testear y versionar, y el bus puede ser cuello de botella.'],
+['Solo servicios utilitarios encadenados entre sí.','Los utilitarios son capacidades transversales (notificaciones, auditoría); no orquestan procesos de negocio.']]},
+{b:'Nube vs on-premise',s:'Una startup lanza un producto con carga incierta, quiere salir al mercado en minutos y no puede hacer una inversión inicial en equipos. ¿Qué modelo de despliegue conviene?',o:[
+['Nube pública: recursos bajo demanda con pago por uso (OPEX).','Aporta elasticidad y time to market y evita el capital inicial; es lo recomendable si la carga es variable o incierta.'],
+['On-premise con infraestructura propia.','Exige CAPEX inicial y suele convenir con carga estable y predecible, no incierta.'],
+['Housing: servidores propios en un datacenter de terceros.','Sigue requiriendo comprar y amortizar equipos, y escalar lleva tiempo.'],
+['Nube privada dedicada a una única organización.','Es una plataforma cloud dedicada, pero sin la elasticidad y el pago por uso que busca este caso.']]},
+{b:'Infraestructura y contenedores',s:'Los servidores de producción se parchean a mano por SSH y con el tiempo cada uno difiere del resto. Se quiere reproducibilidad, rollback simple con la imagen anterior y que el sistema reemplace solo lo que falle. ¿Qué enfoque corresponde?',o:[
+['Infraestructura inmutable con imágenes de contenedor orquestadas por Kubernetes.','Nunca se modifica un servidor: se construye una imagen nueva. Kubernetes mantiene el estado deseado con self-healing y rolling updates.'],
+['Infraestructura mutable con parches manuales por servidor.','Es el origen del configuration drift: cada servidor termina distinto y hay que “curarlo”.'],
+['Máquinas virtuales con SO completo y actualizaciones manuales.','Son más pesadas, arrancan en minutos y las actualizaciones manuales reproducen el problema.'],
+['Escalar verticalmente un único servidor.','Agrega recursos, pero no resuelve la deriva de configuración ni el reemplazo automático.']]},
+{b:'Cola de mensajes',s:'Un consumidor de facturación procesó un mensaje pero se cayó antes de enviar el ACK; al reiniciar, facturó dos veces. Además, unos mensajes con formato inválido traban el resto de la cola. ¿Qué se debe implementar?',o:[
+['Consumo idempotente con ID de mensaje y una DLQ tras un máximo de reintentos, con alerta al equipo.','El ID evita reprocesar lo ya hecho; la DLQ aparta los mensajes inviables sin frenar a los demás.'],
+['Reintentos infinitos hasta que el mensaje se procese.','Los mensajes inválidos nunca se procesarían y seguirían trabando la cola.'],
+['Eliminar la cola y llamar a facturación de forma sincrónica por REST.','Acopla ambos sistemas en el tiempo y no impide la doble facturación si se reintenta sin idempotencia.'],
+['Un circuit breaker entre la cola y el consumidor.','Está pensado para fallas persistentes de un servicio llamado de forma sincrónica, no para duplicados.']]},
+{b:'Migración a microservicios',s:'Un monolito exitoso se volvió difícil de mantener. Se quiere migrar a microservicios de forma gradual, sin una reescritura total, sacando piezas de a una mientras el sistema sigue funcionando. ¿Qué enfoque conviene?',o:[
+['Patrón Strangler: separar partes del monolito de a poco, con un proxy que enruta al monolito o al nuevo microservicio.','Es una reingeniería gradual que organiza la refactorización y avanza por partes; cada microservicio puede sumar su propia base.'],
+['Reescribir todo desde cero como microservicios.','Los límites son difíciles de acertar al inicio y empezar de cero suele terminar con problemas serios.'],
+['Crear un servicio por tabla que exponga su CRUD.','Es el antipatrón de nanoservicios: la comunicación y el mantenimiento superan su utilidad.'],
+['Usar solo un adaptador entre dos APIs.','Adapta entre APIs conceptualmente distintas, pero no organiza ni permite avanzar la migración por partes.']]},
+{b:'Datos entre microservicios',s:'El servicio de Pedidos necesita mostrar el nombre del restaurante, que pertenece al servicio de Restaurantes. Se busca autonomía y poca dependencia en tiempo de ejecución, aceptando consistencia eventual. ¿Qué estrategia de acceso a datos conviene?',o:[
+['Réplica local (read model) con solo los atributos necesarios, sincronizada por eventos o polling.','Aumenta la autonomía y reduce la dependencia en runtime; el costo es la consistencia eventual y gestionar la sincronización.'],
+['Referencia por ID y consulta a la API de Restaurantes (API composition).','Da datos autoritativos y actualizados, pero suma latencia y depende de la disponibilidad del otro servicio.'],
+['Acceso directo a las tablas de Restaurantes desde Pedidos.','Rompe el encapsulamiento: ningún servicio debe acceder directamente a las tablas de otro.'],
+['Una clave foránea de Pedidos hacia la tabla de Restaurantes.','Entre servicios no hay integridad referencial; eso se gestiona a nivel aplicación.']]},
+{b:'Estrategias de persistencia',s:'Un sistema de trading mantiene todo su estado en memoria principal para ser muy rápido y guarda snapshots periódicos en disco para no perderlo todo ante una caída. Persiste los datos en el mismo formato que usa la aplicación, sin transformarlos, y el servidor tiene mucha RAM. ¿Qué estrategia de persistencia describe?',o:[
+['Prevalencia (por ejemplo, Prevayler).','Mantiene el estado en memoria con snapshots a disco y sin transformaciones: gana performance a costa de mucha RAM y de poca interoperabilidad.'],
+['Persistencia ortogonal.','Es una propiedad del entorno de ejecución, típica de los sistemas operativos (hibernación), que no requiere acciones de la aplicación; acá hay snapshots explícitos.'],
+['Base de datos relacional con ORM.','Exige transformar los objetos a tablas, algo que este sistema evita; en cambio, maximiza la interoperabilidad.'],
+['Persistencia en archivos CSV o JSON.','Guarda el estado en archivos con un formato de intercambio; no mantiene el estado vivo en memoria con snapshots.']]},
+{b:'Claves',s:'La relación Cliente tiene cod_cliente, nro_cuit y email, y cada uno identifica unívocamente a un cliente. Se elige cod_cliente como identificador principal. ¿Cómo se clasifican los demás y por qué (cod_cliente, nro_cuit) no sirve como clave candidata?',o:[
+['nro_cuit y email son claves alternas; la combinación (cod_cliente, nro_cuit) no es candidata porque viola la minimalidad.','Quitando nro_cuit sigue habiendo unicidad, así que sobra un atributo. Las candidatas no elegidas como primaria se llaman alternas.'],
+['nro_cuit y email son claves foráneas; la combinación viola la unicidad.','Una FK referencia a la PK de otra relación, y la combinación sí es única: lo que le falla es la minimalidad.'],
+['nro_cuit y email son claves subrogadas; la combinación viola la minimalidad.','Las subrogadas son artificiales, creadas para la tabla; el CUIT y el email ya existen en el negocio.'],
+['nro_cuit y email son claves primarias secundarias; la combinación viola la integridad referencial.','Una relación tiene una sola PK, y la integridad referencial concierne a las FK, no a la minimalidad de una clave.']]},
+{b:'Modelo entidad-relación',s:'En el diagrama E-R, Estudiante y Curso tienen una relación muchos a muchos y, además, hay que guardar la nota de cada estudiante en cada curso. ¿Cómo se debe llevar al modelo físico?',o:[
+['Eliminar la relación N:N e insertar una entidad asociativa con las PK de ambas como FK, donde va la nota.','La N:N es una idea lógica que no se implementa directamente; la asociativa parte la relación y sirve para guardar atributos de cada combinación.'],
+['Poner la nota como atributo de Estudiante.','Un estudiante tiene una nota por curso; un único atributo no alcanza.'],
+['Agregar a Curso una FK al estudiante y la nota.','Impide que un curso tenga muchos estudiantes, que es justo la relación original.'],
+['Convertirla en una relación unaria sobre Estudiante.','Las unarias relacionan una entidad consigo misma, no a dos entidades distintas.']]},
+{b:'Clasificación de entidades',s:'En un modelo de pedidos, la entidad Línea de pedido se identifica por el id del pedido al que pertenece más su número de línea dentro de ese pedido. ¿Cómo se clasifica?',o:[
+['Atributiva: su clave combina atributos propios con una relación.','El número de línea es propio y el id del pedido llega por la relación con Pedido.'],
+['Fundamental: su clave solo tiene atributos propios.','La clave incluye el id del pedido, que llega por una relación.'],
+['Asociativa: su clave está formada solo por relaciones.','La clave tiene un atributo propio (el número de línea), así que no está formada solo por relaciones.'],
+['Subtipo: hereda atributos de un supertipo.','No hay una categoría general con subcategorías en este caso.']]},
+{b:'Formas normales',s:'Una tabla de pedidos tiene clave (sucursal, idPedido) y registra también el recepcionista que atendió. Cada recepcionista atiende en una sola sucursal, así que atendidoPor determina sucursal sin ser clave candidata. Además, se quiere saber dónde atiende cada persona aunque no tenga pedidos. ¿Qué forma normal falta y cómo se resuelve?',o:[
+['Boyce-Codd (BCNF): separar una tabla Recepcionista con su sucursal y dejar el recepcionista como FK en Pedido.','Todo determinante debe ser clave candidata. Al separar, no hace falta un pedido para saber dónde atiende cada persona.'],
+['2FN: eliminar la dependencia parcial de la clave compuesta.','Las dependencias parciales son de un atributo no clave respecto de parte de la clave; acá un atributo clave depende de uno que no lo es.'],
+['3FN: separar los atributos no clave que dependen de otro atributo no clave.','sucursal es parte de la clave, por lo que 3FN ya se cumple y falta el paso siguiente, BCNF.'],
+['4FN: eliminar dependencias multivaluadas.','No hay dos hechos independientes repetidos en una relación muchos a muchos; la dependencia es funcional.']]},
+{b:'Arquitecturas de ORM',s:'Un equipo quiere que las entidades de dominio no sepan cómo se guardan, y que un componente intermedio entre la base y las entidades se encargue de buscar, agregar y modificar objetos. ¿Qué arquitectura de ORM elige?',o:[
+['Data Mapper, con un entity manager que lleva esas responsabilidades.','El componente intermedio se encarga de la persistencia y las entidades quedan libres de ella.'],
+['Active Record: las entidades incorporan save, delete, update y find.','Agrega responsabilidades de persistencia a las propias entidades, justo lo que se quiere evitar.'],
+['Single table con un campo discriminador.','Es una estrategia de mapeo de herencia, no una arquitectura de ORM.'],
+['Persistencia ortogonal del sistema operativo.','Hace transparente el guardado a nivel del entorno de ejecución; no introduce un entity manager ni es una arquitectura de ORM.']]},
+{b:'Identidad y claves',s:'Una API expone /alumnos/15 con un ID incremental, y un usuario cambia el número en la URL y ve datos de otros alumnos. ¿Qué corrección corresponde?',o:[
+['Usar UUID como identificador o, si se mantiene el incremental, validar que el usuario pueda acceder a ese recurso.','Siempre que los IDs viajan por URL deben ser UUID o estar validados, para que no accedan quienes no corresponde.'],
+['Usar una clave natural como el DNI en la URL.','Sigue siendo adivinable y además expone un dato personal.'],
+['Cambiar a una clave compuesta de dos campos.','Sigue siendo predecible y no resuelve el control de acceso.'],
+['Agregar una restricción UNIQUE a la columna del ID.','Garantiza que el valor no se repita, no que otros usuarios no puedan consultarlo.']]},
+{b:'OLTP, OLAP y columnar',s:'Una cadena necesita (a) registrar cada venta con transacciones ACID y (b) tableros de tendencias y promedios sobre miles de millones de filas históricas. ¿Qué combinación conviene?',o:[
+['Relacional (OLTP) para registrar ventas y orientada a columnas para el análisis de (b).','El relacional da transacciones ACID; la columnar guarda cada columna de forma contigua y hace eficientes los promedios y tendencias sobre Big Data.'],
+['Key-value para (a) y relacional para (b).','Key-value no ofrece las garantías transaccionales de un registro de ventas, y una base por filas rinde peor en agregaciones masivas.'],
+['Orientada a documentos para ambos casos.','Puede usarse para OLTP y OLAP, pero no está optimizada para agregar columnas enteras en grandes volúmenes.'],
+['Grafos para (a) y series temporales para (b).','Los grafos apuntan a relaciones y las series temporales a la evolución cronológica de un valor, no a registrar ventas ni a analítica general.']]},
+{b:'Tipos de clave primaria',s:'En una tabla de personas, cada una se identifica por tipo de documento más número de documento: atributos que ya existen en el negocio y que solo juntos son unívocos. ¿Qué tipo de clave primaria es?',o:[
+['Compuesta, formada por tipo y número de documento.','Combina dos o más campos para identificar unívocamente, porque no existe una sola columna que lo logre.'],
+['Subrogada, con un id autoincremental.','Se crea artificialmente para la tabla; acá se usan atributos que ya existen.'],
+['Natural simple, solo el número de documento.','Dos documentos de distinto tipo pueden compartir número.'],
+['Clave alterna.','Es una candidata no elegida como primaria, no el tipo de clave que se eligió.']]},
+{b:'Tipos de relaciones',s:'Se necesita una relación derivada, con nombre, cuyos datos se almacenan y se actualizan cada cierto tiempo, para consultar resúmenes sin recalcularlos en cada pedido. ¿Qué tipo de relación es?',o:[
+['Instantánea (snapshot).','Es derivada, con nombre, almacena los datos y puede definirse cada cuánto se actualiza.'],
+['Vista.','Es una relación virtual definida en términos de otras: no almacena los datos.'],
+['Relación temporal.','Tiene nombre, pero se destruye automáticamente en algún momento, por ejemplo al terminar una sesión.'],
+['Resultado intermedio de una consulta.','No tiene existencia permanente ni puede ser nombrado.']]},
+{b:'Constraints',s:'Al crear la tabla Alumno se requiere que el email no se repita, que el estado solo admita valores permitidos y que el apellido nunca quede vacío. ¿Qué constraints se definen?',o:[
+['UNIQUE para el email, CHECK (o enum) para el estado y NOT NULL para el apellido.','Cada uno limita el dato aceptado: unicidad, valores permitidos y obligatoriedad.'],
+['PRIMARY KEY para el email, NOT NULL para el estado y CHECK para el apellido.','Una PK define la identidad principal, no una simple unicidad, y los otros dos están intercambiados.'],
+['FOREIGN KEY para el email, UNIQUE para el estado y NOT NULL para el apellido.','Una FK referencia a otra tabla y UNIQUE impediría repetir estados.'],
+['UNIQUE para el email, NOT NULL para el estado y CHECK para el apellido.','Invierte los dos últimos: CHECK limita valores permitidos y NOT NULL evita el vacío.']]},
+{b:'MVC con Spring Boot',s:'Una empresa desarrolla una aplicación web con Spring Boot. Los usuarios navegan por distintas páginas, envían formularios y reciben HTML generado desde el servidor. Se quiere separar la presentación de la lógica de negocio sin desarrollar un frontend independiente. ¿Qué solución corresponde?',o:[
+['MVC web con Thymeleaf: controladores @Controller que cargan datos en el Model y devuelven el nombre de la vista.','El template engine rellena los HTML con los datos del Model y el servidor responde con HTML: es un cliente liviano con las vistas como templates.'],
+['@RestController devolviendo ResponseEntity con JSON y una SPA en React.','Es un cliente pesado desacoplado: exige desarrollar un frontend independiente, justo lo que se quiere evitar.'],
+['App móvil híbrida con Flutter que consuma una API.','Es otro cliente pesado que arma las vistas en el dispositivo; tampoco entrega HTML desde el servidor.'],
+['Una PWA con Service Workers que funcione sin conexión.','Es una evolución del cliente pesado web; no genera las vistas en el servidor.']]},
+{b:'Atributos flash',s:'Tras enviar un formulario con éxito, la aplicación redirige al listado y debe mostrar un mensaje de confirmación una sola vez: si el usuario refresca la página, el mensaje no debe aparecer de nuevo. ¿Qué mecanismo usar?',o:[
+['Atributos flash, de un único uso y atados a la sesión del usuario.','Sobreviven a la redirección, se muestran una vez y desaparecen al refrescar.'],
+['Un parámetro en la URL con el texto del mensaje.','Volvería a mostrarse en cada refresco, porque forma parte de la dirección.'],
+['Una cookie persistente con el mensaje.','Seguiría viajando en cada request hasta que alguien la elimine.'],
+['Guardarlo de forma permanente en la sesión.','Quedaría disponible en todos los requests de la sesión y volvería a mostrarse hasta eliminarlo a mano.']]},
+{b:'Sesiones y cookies',s:'En una aplicación web con vistas renderizadas en el servidor, el usuario inicia sesión una sola vez y el servidor debe recordar quién es, y su rol, en las siguientes solicitudes HTTP, que no tienen estado. ¿Cómo se logra?',o:[
+['El servidor crea una sesión con un id, lo envía con Set-Cookie y recupera la sesión por ese id en cada request (stateful).','El estado se monta con cabeceras: la cookie vive en el cliente y viaja en cada request; la sesión, con el rol, queda en el servidor.'],
+['El navegador reenvía usuario y contraseña en cada solicitud.','Es inseguro, impráctico y pierde privacidad: es lo que las sesiones evitan.'],
+['El servidor no guarda nada y decodifica un token en cada operación (stateless).','Es válido para servidores stateless, pero acá se pide que el servidor guarde la sesión.'],
+['Se guarda el rol en la caché del navegador.','La caché almacena recursos para acelerar respuestas; no identifica al usuario ante el servidor.']]},
+{b:'Sesiones mixtas',s:'Un frontend con cliente liviano desacoplado renderiza HTML y consume la API del servidor de aplicación, donde reside la lógica de negocio. ¿Cómo se maneja la identidad del usuario en cada tramo?',o:[
+['Sesión en cookies entre el usuario y el servidor frontend, y tokens de autorización desde el frontend hacia el servidor de aplicación.','Son las sesiones mixtas, propias del cliente liviano desacoplado.'],
+['Cookies de sesión en ambos tramos.','El servidor de aplicación se consume como API y se autoriza con tokens, no con cookies de sesión.'],
+['Tokens desde el navegador y cookies hacia el servidor de aplicación.','Invierte los tramos: el navegador habla con un servidor que renderiza HTML y usa cookies.'],
+['Usuario y contraseña en cada llamada a la API.','Pierde privacidad y seguridad; para eso se emite un token que se envía en cada petición.']]},
+{b:'Middlewares y errores',s:'En un backend con Express varios controladores lanzan errores y se quiere atenderlos en un único lugar, devolviendo respuestas útiles al usuario y registrando los problemas reales. ¿Qué solución conviene?',o:[
+['Un middleware global de errores, con firma (err, req, res, next), al que llegan los next(err) que nadie atrapó antes.','Centraliza el manejo y separa responsabilidades; está inspirado en el controllerAdvice de Spring Boot.'],
+['Un try/catch con la respuesta de error en cada controlador.','Duplica código y dispersa la lógica de errores, algo que el manejo centralizado evita.'],
+['Un middleware común con tres parámetros (req, res, next).','Sin el parámetro de error, Express no lo trata como manejador de errores.'],
+['Que el router resuelva los errores por sí mismo.','El router es un middleware más que encamina requests; no maneja excepciones.']]},
+{b:'PWA',s:'Un sitio web debe poder instalarse como aplicación sin pasar por las tiendas, y seguir funcionando con conexión pobre o sin conexión. ¿Qué enfoque corresponde?',o:[
+['Una Progressive Web App con Service Workers.','Los Service Workers corren en segundo plano para usar recursos cacheados y funcionar offline; corre sobre el mismo motor que una SPA.'],
+['Mobile nativo con Kotlin y Swift.','Se distribuye por las tiendas y requiere una base de código por plataforma.'],
+['Mobile híbrido con React Native o Flutter.','Se empaqueta y distribuye por las tiendas, accediendo a las APIs nativas mediante plugins.'],
+['Un cliente liviano que renderiza HTML en el servidor.','Cada acción exige un nuevo request, por lo que no funciona sin conexión.']]},
+{b:'Mobile nativo vs híbrido',s:'Una app de realidad aumentada necesita acceso directo y total a cámara y GPS, animaciones exigentes y la mejor performance, y el equipo acepta mantener un código distinto por plataforma. ¿Qué tipo de cliente elige?',o:[
+['Mobile nativo, con el SDK de cada plataforma (Kotlin o Java en Android, Swift en iOS).','Ofrece acceso total al hardware y a las APIs del sistema, mejor performance y experiencia acorde a cada plataforma, a costa de dos bases de código.'],
+['Mobile híbrido con una única base de código.','Reduce tiempo y costo, pero accede a las APIs nativas mediante plugins o puentes, con menos performance y personalización.'],
+['SPA web en el navegador.','Tiene acceso restringido al hardware y a las APIs nativas del dispositivo.'],
+['PWA instalable con Service Workers.','Corre sobre el motor de una SPA y no da acceso total al hardware ni la performance de un cliente nativo.']]},
+{b:'Versionado de APIs',s:'Una app móvil ya instalada en miles de dispositivos consume la API. El backend necesita cambiar el contrato de un endpoint, pero muchos usuarios tardan semanas en actualizar. ¿Qué estrategia evita romper a los clientes viejos?',o:[
+['Versionar la API de forma explícita (/api/v1, /api/v2) y preferir agregar campos opcionales en vez de modificar o eliminar los existentes.','Así el backend soporta a las versiones viejas mientras se propaga la nueva.'],
+['Hacer rollback de la app para que vuelva a la versión anterior.','Una versión instalada no se puede desinstalar de los dispositivos: el cliente pesado no tiene rollback.'],
+['Cambiar el contrato directamente y confiar en que actualicen.','Es un cambio breaking que rompe a los clientes que quedaron en versiones anteriores.'],
+['Desplegar el backend con Recreate en una ventana de mantenimiento.','Provoca downtime y los clientes viejos seguirían llamando al contrato anterior.']]},
+{b:'Caché y CDN',s:'Un sitio con usuarios en varios países carga lento sus imágenes, CSS y JS, paga mucho ancho de banda y necesita protección contra ataques DDoS. ¿Qué componente conviene?',o:[
+['Una CDN, con servidores distribuidos geográficamente que entregan los activos estáticos.','Mejora los tiempos de carga, reduce costos de ancho de banda, aumenta la disponibilidad y brinda seguridad contra ataques como DDoS.'],
+['Una caché de aplicación para consultas SQL costosas.','Acelera datos calculados en el backend, pero no entrega activos estáticos cerca del usuario ni mitiga DDoS.'],
+['Hibernate Caching en la capa de persistencia.','Evita consultar la base por entidades ya cargadas; no tiene relación con la entrega de contenido.'],
+['Escalar verticalmente el servidor de origen.','Ayuda al origen, pero no acerca el contenido, no reduce ancho de banda y sigue siendo un único punto de falla.']]},
+{b:'API Gateway y BFF',s:'Un backend de microservicios es consumido por una app web y una app móvil. Cada una necesita respuestas agregadas con formatos distintos, sin forzar cambios en los contratos internos de los microservicios. ¿Qué patrón conviene?',o:[
+['BFF (Backend For Frontend): una capa de backend dedicada a cada tipo de cliente (BFF Web, BFF Mobile).','Cada BFF agrega y adapta las respuestas de los microservicios al formato que su cliente necesita.'],
+['Un único API Gateway genérico, igual para todos los clientes.','Centraliza autenticación, rate limiting y ruteo, pero no adapta el contrato a cada tipo de cliente.'],
+['Que cada cliente llame directo a cada microservicio.','Acopla a los clientes con la topología del backend.'],
+['Un ESB que transforme todos los mensajes.','Es un bus de integración con riesgo de cuello de botella; no es una capa por tipo de cliente.']]},
+{b:'Recursos en sistemas web',s:'En un sistema de pedidos, los ítems solo tienen sentido dentro de su pedido: no corresponde listarlos sin indicar a qué pedido pertenecen. ¿Cómo se clasifica el recurso Ítem?',o:[
+['Recurso dependiente (anidado): no es autónomo y se expone condicionado por su contenedor, con una relación de composición.','Por ejemplo, se consulta dentro del pedido que lo contiene.'],
+['Recurso independiente, con sentido de existencia propio.','Los ítems no se listan sin su contenedor, así que no son independientes.'],
+['Recurso protegido por autorización con roles y permisos.','La protección es otro eje: define quién accede, no si el recurso depende de otro.'],
+['Recurso que exige autenticación y responde 401.','Habla del acceso del usuario logueado, no de la dependencia entre recursos.']]},
+{b:'Monolito',s:'Una startup lanza un MVP con un equipo de cinco personas, necesita fuerte consistencia transaccional entre módulos y espera una carga predecible que crece de forma uniforme. ¿Qué arquitectura conviene al inicio?',o:[
+['Monolito, que puede organizarse internamente en capas y dividirse luego en microservicios si hace falta.','Da desarrollo simple, transacciones locales, despliegue simple y menor costo operativo; sirve para un producto nuevo y un equipo chico.'],
+['Microservicios desde el inicio, uno por capacidad de negocio.','Los límites son difíciles de acertar al comienzo, el costo operativo frena a un equipo chico y se pierde la transacción local.'],
+['SOA con un ESB central.','Es una estrategia de integración a nivel empresa, con costos de licencia y configuración que este caso no necesita.'],
+['Arquitectura orientada a eventos con coreografía.','El flujo es difícil de depurar y la consistencia transaccional es compleja (requiere saga), lo opuesto a lo que se pide.']]},
+{b:'Algoritmos de balanceo',s:'Un balanceador reparte solicitudes entre tres servidores, pero uno tiene el doble de capacidad que los otros dos. Se quiere aprovecharlo asignándole proporcionalmente más tráfico. ¿Qué algoritmo conviene?',o:[
+['Weighted Load.','Asigna proporcionalmente más solicitudes al servidor con mayor capacidad.'],
+['Round Robin.','Distribuye de forma secuencial y pareja, sin considerar la capacidad de cada servidor.'],
+['Least Connections.','Prioriza al servidor con menos conexiones activas en ese momento, no al de mayor capacidad.'],
+['Sticky Sessions.','No es un algoritmo de distribución, sino una política para dirigir siempre al mismo servidor las solicitudes de un cliente.']]},
+{b:'Balanceo en capas 4 y 7',s:'Un balanceador debe enviar las rutas /api a un grupo de servidores y las rutas /imagenes a otro, decidiendo según la URL, los headers y las cookies de cada solicitud. ¿Qué tipo de balanceo corresponde?',o:[
+['Capa 7 (aplicación), que entiende HTTP/HTTPS (por ejemplo, un ALB en AWS).','Puede decidir según URL, headers y cookies, y sirve también para funciones de API Gateway.'],
+['Capa 4 (transporte), basada en IP y puerto.','Es más rápida porque no mira el contenido de la solicitud, pero por eso mismo no puede enrutar por URL.'],
+['DNS Round Robin.','Distribuye a nivel global entre regiones o data centers, sin inspeccionar cada solicitud.'],
+['Balanceo con Weighted Load.','Es un algoritmo de reparto según capacidad; no decide según el contenido de la solicitud.']]},
+{b:'Health checks',s:'Se quiere que el balanceador retire un nodo cuando, en el tráfico real, acumula timeouts y respuestas 5xx por encima de un umbral, sin realizar consultas periódicas adicionales. ¿Qué mecanismo corresponde?',o:[
+['Health check pasivo.','Observa las respuestas del tráfico y retira el nodo si supera una cantidad determinada de fallos.'],
+['Health check activo.','Consulta periódicamente un endpoint de salud del servidor, que es justamente lo que se quiere evitar.'],
+['Sticky sessions.','Dirige a un cliente siempre al mismo servidor; no detecta nodos con fallas.'],
+['Escalado vertical del nodo.','Agrega recursos, pero no retira de la rotación a un nodo que falla.']]},
+{b:'Proxy y DNS',s:'Se quiere que los clientes no sepan qué servidor interno los atiende, ocultar la topología, comprimir y cachear respuestas, y construir sobre eso el balanceador, el API Gateway y el WAF. ¿Qué componente se usa?',o:[
+['Proxy reverso.','El cliente no sabe qué servidor lo atiende, y sobre él se construyen el Load Balancer, el API Gateway y el WAF.'],
+['Proxy directo.','Actúa del lado del cliente: el servidor de destino ve al proxy, y sirve para controlar y auditar la navegación saliente.'],
+['DNS con un TTL alto.','Traduce nombres en IPs y cachea las respuestas según su TTL; no oculta la topología ni comprime.'],
+['Cola de mensajes.','Desacopla productores y consumidores en el tiempo; no intermedia solicitudes de clientes.']]},
+{b:'Gestión de secretos',s:'Un equipo tiene la contraseña de la base de datos y las API keys escritas en el repositorio. Se quiere corregirlo con control de acceso, auditoría y rotación. ¿Qué solución corresponde?',o:[
+['Una bóveda centralizada (HashiCorp Vault, AWS Secrets Manager, etc.) de la que la aplicación obtiene los secretos en tiempo de ejecución.','Los secretos nunca deben estar en el código fuente ni en el repositorio; la bóveda ofrece control de acceso, auditoría y rotación.'],
+['Moverlos a un archivo de configuración dentro del repositorio.','Siguen en el repositorio, justo lo que no debe ocurrir.'],
+['Incluirlos dentro de la imagen del contenedor.','Quedan embebidos en un artefacto que recorre todos los ambientes, sin rotación ni auditoría.'],
+['Compartirlos entre el equipo por un canal interno.','No da control de acceso, auditoría ni rotación, y la aplicación no los obtiene en runtime.']]},
+{b:'CI/CD y artefactos',s:'Un equipo compila la aplicación por separado en testing, staging y producción, y a veces falla en producción algo que andaba en staging. Se busca reproducibilidad e integrar cada cambio varias veces por día con validación automática. ¿Qué práctica corrige el problema?',o:[
+['Integración continua y un artefacto (por ejemplo, una imagen de contenedor) construido una sola vez que recorre todos los ambientes.','Así lo que se prueba es exactamente lo que llega a producción; que el paso final sea delivery o deployment automático depende del negocio.'],
+['Compilar en el servidor de producción para asegurar que coincida.','Genera un artefacto distinto del probado y rompe la reproducibilidad.'],
+['Mantener un staging más barato y distinto de producción.','Staging debe parecerse a producción en versiones, configuración e infraestructura para evitar sorpresas.'],
+['Integrar los cambios una vez por mes para reducir la frecuencia de fallas.','La integración continua propone integrar varias veces por día, validando de forma automática.']]},
+{b:'Disponibilidad',s:'Un servicio depende en serie de dos componentes, cada uno con 99,9 % de disponibilidad, y el contrato (SLA) con el cliente compromete 99,9 %. ¿Qué conclusión es correcta?',o:[
+['La disponibilidad compuesta es 99,9 % × 99,9 % ≈ 99,8 %, menor que lo comprometido: hay que mejorar los componentes o replantear el compromiso.','En serie las disponibilidades se multiplican, así que el total queda por debajo del SLA.'],
+['La disponibilidad total sigue siendo 99,9 %.','Dos componentes en serie no mantienen el valor individual: se multiplican.'],
+['La disponibilidad total es el promedio, 99,95 %.','No se promedia: el servicio falla si falla cualquiera de los dos, por eso se multiplica.'],
+['El SLO y el SLA son lo mismo, así que no hay incumplimiento.','El SLO es una meta interna y el SLA un compromiso contractual con consecuencias.']]},
+{b:'Canary release',s:'Una nueva versión del servicio de pagos debe exponerse primero a un pequeño porcentaje de usuarios y avanzar solo si las métricas de errores y latencia son iguales o mejores que las de la versión estable. ¿Qué estrategia aplica?',o:[
+['Canary release, con observabilidad y enrutamiento para comparar al canario contra la versión estable.','Limita el radio de impacto y se avanza en base a métricas.'],
+['Blue/Green.','Cambia todo el tráfico de golpe de un ambiente a otro, sin exposición gradual por porcentaje.'],
+['Rolling update.','Reemplaza instancias progresivamente, pero no compara métricas entre un subconjunto de usuarios y la versión estable.'],
+['Recreate.','Baja todas las instancias y levanta la nueva: el impacto es total y hay downtime.']]},
+{b:'Shadow',s:'Se quiere validar el rendimiento de una nueva versión con carga real, sin que ningún usuario reciba sus respuestas, teniendo cuidado de no cobrar ni enviar emails dos veces. ¿Qué estrategia corresponde?',o:[
+['Shadow: la nueva versión recibe una copia del tráfico real y su respuesta se descarta.','El usuario no se ve afectado y es ideal para probar performance con carga real.'],
+['Canary release.','Expone la versión nueva a usuarios reales, que sí reciben sus respuestas.'],
+['Blue/Green.','Tras el cambio el tráfico real se atiende con la versión nueva; no hay copia con respuesta descartada.'],
+['Rolling update.','Reemplaza instancias y los usuarios reciben respuestas de la versión nueva durante el proceso.']]},
+{b:'Feature flags',s:'El código estará listo en noviembre, pero marketing quiere lanzar la funcionalidad el 1 de diciembre, activándola gradualmente por segmento de clientes y pudiendo apagarla en segundos si da problemas. ¿Qué técnica usar?',o:[
+['Feature flags: se despliega cuando está listo y se activa cuando el negocio lo decide, con kill switch.','Separa deploy de release; hay que eliminar los flags viejos para no acumular deuda técnica.'],
+['Blue/Green.','Permite rollback inmediato, pero cambia la versión completa y no activa por segmento ni separa deploy de release.'],
+['Rolling update.','Reemplaza instancias progresivamente, sin control de negocio sobre quién ve la funcionalidad.'],
+['Shadow.','Descarta las respuestas de la versión nueva, así que los usuarios nunca verían la funcionalidad.']]},
+{b:'Base de datos y despliegues',s:'Durante un rolling update sin downtime conviven dos versiones de la aplicación sobre la misma base. Hay que renombrar una columna. ¿Cómo hacerlo sin romper la versión anterior?',o:[
+['Agregar la columna nueva, migrar los datos y recién después eliminar la vieja, con versiones compatibles en cada paso.','Es el mismo principio del versionado de APIs: agregar, migrar y eliminar.'],
+['Renombrar la columna directamente y desplegar.','Un cambio incompatible rompe a la versión anterior, que sigue corriendo.'],
+['Pasar a Recreate con downtime para evitar la convivencia.','Evita el problema, pero contradice el requisito de cero downtime.'],
+['Renombrar y confiar en un rollback si algo falla.','Un cambio irreversible en la base complica el rollback: a veces solo queda ir hacia adelante.']]},
+{b:'APIs: GraphQL',s:'Una app móvil muestra pantallas que necesitan datos de varias entidades, pero cada versión de la app requiere campos distintos y se quiere reducir la cantidad de peticiones: el cliente debe pedir exactamente lo que necesita y recibirlo en una sola request. ¿Qué tipo de API conviene?',o:[
+['GraphQL, un lenguaje de consulta donde el cliente pide lo que necesita y recibe todo en una misma request.','Se elige cuando los clientes necesitan flexibilidad, y ahorra peticiones.'],
+['REST con JSON y endpoints fijos.','Es ideal para APIs públicas simples, pero los endpoints fijos devuelven estructuras predefinidas y obligan a más peticiones.'],
+['gRPC con serialización binaria.','Se recomienda para la comunicación interna entre servicios, no para clientes que necesitan flexibilidad en lo que piden.'],
+['SOAP con contrato WSDL.','Es para entornos empresariales con contratos formales y tipados, con XML y mayor complejidad.']]},
+{b:'APIs: gRPC',s:'Dos microservicios internos se comunican con mucho tráfico y necesitan serialización binaria eficiente, soporte para balanceo de carga, trazas, health checks y autenticación, y que la invocación se parezca a llamar una función local como cobrar(pedido). ¿Qué tecnología conviene?',o:[
+['gRPC.','Conecta servicios con serialización binaria y trae soporte para balanceo, trazas, healthchecks y autenticación.'],
+['REST con JSON.','Es sincrónico sobre HTTP con JSON, simple y apto para APIs públicas, pero sin serialización binaria.'],
+['GraphQL.','Se elige para que el cliente pida solo lo que necesita; no es la opción para comunicación interna eficiente entre servicios.'],
+['SOAP con XML.','Usa XML y un contrato formal con WSDL, más pesado para un tráfico interno intenso.']]},
+{b:'Idempotencia',s:'Un servicio reintenta una llamada de cobro porque no recibió respuesta, y a veces el cliente termina cobrado dos veces. Se necesita que repetir la operación no duplique su efecto. ¿Qué patrón aplica?',o:[
+['Idempotencia: una clave única por operación que evita repetirla.','Con la clave, si la operación ya se ejecutó, el reintento no vuelve a cobrar.'],
+['Más reintentos con backoff.','Espaciar los intentos reduce la saturación, pero no impide que un reintento duplique el cobro.'],
+['Circuit breaker.','Corta las llamadas ante fallas persistentes, pero no evita duplicados.'],
+['Fallback con un mensaje de aviso.','Es una respuesta degradada cuando no hay alternativa; no controla la repetición de la operación.']]},
+{b:'Bases de datos compartidas',s:'Dos sistemas pertenecen a un mismo equipo y se despliegan juntos. Uno es legado y no se le puede construir otra interfaz, la carga es baja y se necesitan reportes cruzados simples con consistencia fuerte. ¿Qué estrategia de integración conviene?',o:[
+['Base de datos compartida.','Conviene con sistemas del mismo equipo que se despliegan juntos, sistemas legados sin otra interfaz, necesidad de consistencia fuerte y baja carga.'],
+['Una base de datos por servicio.','Es lo adecuado con equipos distintos y ciclos de vida diferentes; acá agregaría complejidad innecesaria.'],
+['Cola de mensajes con consistencia eventual.','El resultado no es inmediato y acá se pide consistencia fuerte; además suma un broker para operar.'],
+['Réplica local sincronizada por eventos.','Da autonomía con consistencia eventual, lo opuesto a lo que se pide.']]},
+{b:'SOA: tipos de servicio',s:'En una arquitectura SOA, todos los procesos necesitan enviar notificaciones y registrar auditoría, capacidades que no pertenecen a ningún dominio de negocio específico. ¿Qué tipo de servicio corresponde?',o:[
+['Servicio utilitario: capacidad transversal sin ligarse a un dominio.','Los servicios de tarea invocan a los de entidad, y estos a los utilitarios.'],
+['Servicio de entidad, con operaciones sobre una entidad de negocio.','Es altamente reutilizable, pero está ligado a una entidad como cliente, cuenta o póliza.'],
+['Servicio de tarea o proceso.','Orquesta otros servicios para resolver un proceso de negocio concreto, como el alta de cliente.'],
+['Un ESB con las reglas dentro del bus.','Es un bus de comunicación y mediación, no un tipo de servicio, y esas reglas son difíciles de testear y versionar.']]},
+{b:'Ley de Conway',s:'Una empresa tiene tres equipos que casi no se comunican entre sí, y su sistema terminó dividido en tres partes con integraciones frágiles que reflejan esa falta de comunicación. ¿Qué principio lo explica?',o:[
+['La Ley de Conway: los sistemas copian la estructura de comunicación de la organización que los diseña.','Por eso la estructura de los equipos influye en la arquitectura.'],
+['Bounded context.','Divide un dominio grande en contextos con modelos consistentes, pero no explica por qué el diseño refleja la comunicación entre equipos.'],
+['Patrón Strangler.','Organiza la migración gradual de un monolito a microservicios; no explica la influencia de la organización.'],
+['La teoría de control de la observabilidad.','Mide cuánto se pueden inferir los estados internos de un sistema a partir de sus salidas; no se vincula con equipos.']]},
+{b:'Bounded context',s:'En una empresa, “Cliente” significa algo distinto para Ventas (contacto comercial) que para Facturación (datos fiscales). Un modelo único para todo el dominio genera conflictos constantes. ¿Qué enfoque de diseño conviene?',o:[
+['Bounded contexts: dividir el dominio en contextos con su propio modelo y vocabulario, definiendo un mapa de contexto.','Cada área usa su vocabulario; el mapa define cómo se relacionan y se traducen los conceptos.'],
+['Un único modelo canónico de Cliente para todo el dominio.','Es justo lo que se considera erróneo: un mismo concepto puede tener modelos distintos según el contexto.'],
+['Una base compartida con una tabla Cliente única.','Fuerza un esquema común y acopla ambos contextos, sin resolver la diferencia de significado.'],
+['Un servicio por tabla que exponga su CRUD.','Es el antipatrón de nanoservicios y no resuelve el conflicto de modelos.']]},
+{b:'Service registry',s:'En una plataforma de microservicios las instancias cambian de ubicación al escalar o fallar, y no pueden configurarse direcciones fijas. ¿Qué componente de infraestructura permite que los servicios se encuentren?',o:[
+['Service registry y discovery, que sabe qué servicios existen y dónde están.','Resuelve la ubicación cambiante sin direcciones fijas.'],
+['API Gateway.','Enruta cada llamada del cliente al servicio correspondiente y centraliza autenticación, SSL y balanceo; no es el registro dinámico de instancias.'],
+['Un log aggregator.','Guarda en un solo lugar los registros de los servicios; no resuelve la ubicación.'],
+['Una cola de mensajes.','Desacopla en el tiempo, pero no informa dónde está cada instancia.']]},
+{b:'Cuándo usar microservicios',s:'Una plataforma de delivery tiene varios equipos pequeños, un dominio complejo con muchos subdominios, crecimiento sostenido, picos de carga difíciles de predecir y publicaciones muy frecuentes. Ya cuenta con cultura DevOps. ¿Qué arquitectura se justifica?',o:[
+['Microservicios, con servicios autónomos por capacidad de negocio y desplegables de forma independiente.','Esos criterios (equipos pequeños, escala dinámica, publicación frecuente, dominios complejos) son los que justifican sus costos.'],
+['Monolito desplegado como una única unidad.','El despliegue todo o nada y el escalado en bloque frenarían la publicación frecuente y los picos impredecibles.'],
+['Cliente-servidor de dos capas con una base central.','Es una estructura monolítica que se versiona y distribuye entera.'],
+['SOA con un ESB único para todo.','Introduce un posible cuello de botella de performance y organizacional.']]},
+{b:'Coreografía de microservicios',s:'Se quiere sumar nuevos servicios que reaccionen a lo que ocurre en el sistema sin modificar los existentes, con alta escalabilidad y resiliencia, aceptando que el flujo completo sea más difícil de seguir. ¿Qué enfoque corresponde?',o:[
+['Coreografía: los servicios publican eventos al cambiar su estado y otros se suscriben y reaccionan.','Reduce el acoplamiento; requiere gobernanza de eventos y contratos, y una saga para la consistencia transaccional.'],
+['Orquestación con un servicio central que invoque a cada servicio.','Ofrece visibilidad, pero concentra un punto único de fallo y mayor acoplamiento, y agregar pasos exige modificar al orquestador.'],
+['Llamadas REST sincrónicas encadenadas.','Aumentan la latencia, exigen disponibilidad simultánea y propagan fallas en cascada.'],
+['Una base compartida entre todos los servicios.','Acopla esquemas y rompe la autonomía de datos de cada servicio.']]},
+{b:'Comunicación asincrónica',s:'Tras confirmar un pedido hay que enviar notificaciones. No se necesita respuesta inmediata, hay picos de ventas y el servicio de notificaciones a veces está caído. ¿Qué tipo de comunicación conviene?',o:[
+['Asincrónica mediante un broker de mensajes (por ejemplo, RabbitMQ).','Desacopla en el tiempo, absorbe picos y una caída del consumidor no frena al resto; el costo es la consistencia eventual y un flujo más difícil de rastrear.'],
+['REST sincrónico entre Pedidos y Notificaciones.','Ambos servicios deberían estar disponibles a la vez y una falla puede propagarse en cascada.'],
+['gRPC sincrónico con balanceo de carga.','Mejora la comunicación interna, pero sigue exigiendo disponibilidad simultánea.'],
+['Una consulta GraphQL desde Pedidos.','Sirve para que un cliente pida datos de forma flexible; no desacopla en el tiempo.']]},
+{b:'Entidad, agregado y servicio',s:'En un dominio bancario, la operación “transferir fondos” involucra a dos cuentas y no pertenece naturalmente a ninguna de ellas. ¿Dónde conviene modelarla?',o:[
+['En un servicio, que mapea las operaciones que no corresponden a una sola entidad o agregado.','La transferencia coordina más de una entidad.'],
+['Dentro de la entidad Cuenta de origen.','Cargaría con una operación que no le pertenece por sí sola.'],
+['Como un atributo de la entidad Cuenta.','Un atributo describe una característica, no una operación entre entidades.'],
+['Como un bounded context propio por cada transferencia.','Los contextos dividen modelos del dominio; no se crea uno por operación.']]}
+];
+
+const $=s=>document.querySelector(s),L='ABCD';
+const sh=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+Q.forEach((q,n)=>{if(q.o.length!==4)console.error('Pregunta '+(n+1)+': debe tener exactamente 4 opciones')});
+let ord,cur,ok=0,bad=0,log=[],opts,sel,done;
+const app=$('#app');
+
+function stats(){$('#cOk').textContent=ok;$('#cBad').textContent=bad}
+function expl(os){return os.map((o,i)=>'<p><b>'+L[i]+(o.c?' (correcta)':'')+':</b> '+o.w+'</p>').join('')}
+
+function intro(){
+  ok=bad=0;stats();
+  app.innerHTML='<div class="card"><h2>Casos prácticos de diseño de sistemas</h2><p>'+Q.length+' situaciones para decidir qué concepto, patrón o herramienta aplicar. Elegí una opción, confirmá y leé por qué las otras no encajan en ese escenario.</p><button class="btn" onclick="start()">Comenzar</button></div>';
+}
+function start(){ord=sh(Q.map((_,i)=>i));cur=0;ok=bad=0;log=[];stats();ask()}
+
+function ask(){
+  const q=Q[ord[cur]],n=Q.length;
+  opts=sh(q.o.map((o,k)=>({t:o[0],w:o[1],c:k===0})));sel=-1;done=false;
+  app.innerHTML='<div class="bar"><i style="width:'+(cur/n*100)+'%"></i></div>'
+   +'<div class="card"><div class="tag">Pregunta '+(cur+1)+' de '+n+'. Tema: '+q.b+'</div>'
+   +'<p class="sc">'+q.s+'</p>'
+   +opts.map((o,k)=>'<button class="o" onclick="pick('+k+')"><b>'+L[k]+'</b><span>'+o.t+'</span></button>').join('')
+   +'<button class="btn" id="cf" disabled onclick="confirmar()">Confirmar respuesta</button><div id="fb"></div></div>';
+  window.scrollTo(0,0);
+}
+function pick(k){
+  if(done)return;sel=k;
+  document.querySelectorAll('.o').forEach((e,i)=>e.classList.toggle('s',i===k));
+  $('#cf').disabled=false;
+}
+function confirmar(){
+  if(sel<0||done)return;
+  done=true;
+  const good=opts[sel].c,ci=opts.findIndex(o=>o.c);
+  good?ok++:bad++;stats();
+  log.push({qi:ord[cur],opts:opts,sel:sel,good:good});
+  document.querySelectorAll('.o').forEach((e,i)=>{e.disabled=true;e.classList.remove('s');if(opts[i].c)e.classList.add('c');else if(i===sel)e.classList.add('w')});
+  $('.bar i').style.width=((cur+1)/Q.length*100)+'%';
+  $('#cf').remove();
+  $('#fb').innerHTML='<div class="fb '+(good?'c':'w')+'"><strong>'+(good?'Correcto.':'Incorrecto. La respuesta correcta es la '+L[ci]+'.')+'</strong>'+expl(opts)+'</div>'
+   +'<button class="btn" onclick="next()">'+(cur+1<Q.length?'Siguiente pregunta':'Ver resultados')+'</button>';
+  $('#fb').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function next(){cur++;cur<Q.length?ask():fin()}
+
+function fin(){
+  const n=Q.length,p=Math.round(ok/n*100);
+  app.innerHTML='<div class="bar"><i style="width:100%"></i></div>'
+   +'<div class="card"><div class="tag">Resultados</div><div class="big">'+p+'%</div>'
+   +'<p>'+ok+' correctas y '+bad+' incorrectas, de '+n+' preguntas.</p>'
+   +'<button class="btn" onclick="start()">Reiniciar cuestionario</button>'
+   +(bad?'<button class="btn g" onclick="rev(true)">Revisar incorrectas</button>':'')
+   +'<button class="btn g" onclick="rev(false)">Revisar todas</button></div><div id="rv"></div>';
+  window.scrollTo(0,0);
+}
+function rev(only){
+  const ls=log.filter(l=>!only||!l.good);
+  $('#rv').innerHTML=ls.map(l=>{
+    const q=Q[l.qi],ci=l.opts.findIndex(o=>o.c);
+    return '<div class="card"><div class="tag">Tema: '+q.b+'. '+(l.good?'Acertaste.':'Fallaste.')+'</div><p class="sc">'+q.s+'</p>'
+     +'<p>Tu respuesta: <b>'+L[l.sel]+'</b>. Respuesta correcta: <b>'+L[ci]+'</b>.</p><div class="fb '+(l.good?'c':'w')+'">'+expl(l.opts)+'</div></div>';
+  }).join('');
+  $('#rv').scrollIntoView({behavior:'smooth'});
+}
+intro();
+</script>
+</body>
+</html>
